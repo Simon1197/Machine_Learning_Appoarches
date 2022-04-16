@@ -1,0 +1,371 @@
+---
+title: "Titanic Survived"
+author: "Pinyu Chen"
+date: "4/7/2022"
+output: pdf_document
+---
+Link: https://www.kaggle.com/competitions/titanic/data?select=train.csv
+survival:	(0 = No, 1 = Yes)
+pclass:	Ticket class	(1 = 1st, 2 = 2nd, 3 = 3rd)
+sex	
+Age: (years)	
+sibsp: number of siblings / spouses aboard the Titanic	
+parch: number of parents / children aboard the Titanic	
+ticket:	Ticket number	
+fare:	Passenger fare	
+cabin:	Cabin number	
+embarked:	Port of Embarkation	(C = Cherbourg, Q = Queenstown, S = Southampton)
+
+Since the data here has already separate in train and test, I combine them together and use K-fold to seperate them again.
+```{r}
+library(tidyverse)
+```
+
+```{r}
+TS1 <- read_csv("./titanic/train.csv")
+TS2 <- read_csv("./titanic/test.csv")
+TS2.1 <- read_csv("./titanic/gender_submission.csv") 
+
+TS2 %>% 
+  left_join(TS2.1, by = "PassengerId") -> TS2
+TS1 %>% 
+  rbind(TS2) -> TS
+TS
+```
+# check missing values.
+```{r}
+colSums(is.na(TS))
+colSums(TS == 0)
+```
+
+# Remove missing values
+Age has 263 missing value.
+Fare has 1 missing value.
+Embarked has 2 missing value.
+Cabin has 1014 missing value, so I decide to remove this variable.
+```{r}
+TS %>% 
+  drop_na(Age, Fare, Embarked) %>% 
+  select(-PassengerId, -Name, -Cabin, -Ticket) %>% 
+  mutate(Sex = as.factor(Sex),
+         Embarked = as.factor(Embarked),
+         Age_rounded = round(Age/10)*10)-> TS
+```
+# check the distribution of variable.
+```{r}
+par(mfrow=c(3,3))
+hist(TS$Survived)
+hist(TS$Pclass)
+plot(TS$Sex)
+hist(TS$Age)
+hist(TS$SibSp)
+hist(TS$Parch)
+# hist(log(TS$SibSp))
+# hist(log(TS$Parch))
+hist(log(TS$Fare))
+plot(TS$Embarked)
+summary(TS)
+TS %>% 
+  keep(is.numeric) %>% 
+  cor()
+```
+# Check the relationship between explanatory variables and response variable
+```{r}
+ggplot(TS,aes(x=Pclass,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=Sex,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=Age,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=Age_rounded,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=SibSp,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=Parch,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=Fare,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+
+ggplot(TS,aes(x=Embarked,y=Survived))+
+  geom_point(alpha=0.5)+
+  geom_smooth(color="red", linetype="dashed", se=FALSE)+
+  stat_smooth(method="glm",se=FALSE,method.args = list(family=binomial)) +
+  theme_bw() +
+  ylab("Propability")
+```
+
+# Form the full model
+```{r}
+TS.lm <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, family = binomial, data = TS)
+summary(TS.lm)
+library(DescTools)
+PseudoR2(TS.lm) # R^2
+```
+# modle selection
+```{r}
+library(leaps)
+TS.lmR <- regsubsets(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, data = TS)
+Areg.summary <- summary(TS.lmR)
+Areg.summary$cp
+Areg.summary$bic
+Areg.summary$adjr2
+
+# par(mfrow=c(1,1))
+# plot(Auto.lm, scale = "r2")
+# plot(Auto.lm, scale = "adjr2")
+# plot(Auto.lm, scale = "Cp")
+# plot(Auto.lm, scale = "bic")
+
+
+par(mfrow = c(2,2))
+plot(Areg.summary$rss, xlab = "Number of Variables", ylab = "RSS", type = "l")
+
+plot(Areg.summary$cp, xlab = "Number of Variables",ylab = "Cp", type = "l")
+which.min(Areg.summary$cp)
+points(8, Areg.summary$cp[8], col = "red", cex = 2,pch = 20)
+
+plot(Areg.summary$bic, xlab = "Number of Variables",ylab = "BIC", type = "l")
+which.min(Areg.summary$bic)
+points(2, Areg.summary$bic[2], col = "red", cex = 2,  pch = 20)
+
+plot(Areg.summary$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", type = "l")
+which.max(Areg.summary$adjr2) 
+points(8, Areg.summary$adjr2[8], col = "red", cex = 2, pch = 20)
+```
+# Modle after selection
+```{r}
+TS_AF <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = TS)
+summary(TS_AF)
+library(DescTools)
+PseudoR2(TS_AF)
+```
+
+# Check if Age need to be transformed to Age_rounded.
+
+H0: E(Y) = beta0 + beta 1 * X
+Ha: E(Y) != beta0 + beta 1 * X
+```{r}
+TS_reduced <- glm(Survived ~ Pclass + Sex + Age_rounded + SibSp, family = binomial, data = TS)
+TS_full <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = TS)
+anova(TS_reduced, TS_full)
+1-pchisq(26.194, 7)
+```
+At p-value < 0.05 (0.0004650039), we reject the null hypothesis ($H_0: E(Y)=\beta_0+\beta_1 X$, i.e., model fits data). There has evidence of a lack of fit of the Age variable, so we want to transform Age.
+
+# Check if there have collinearity between each variable.
+```{r}
+library(car)
+vif(TS_AF)
+```
+There has no variable with GVIF larger than 5, so we do not consider this model will include the problem of mulitcollinearity.
+
+# Check if there have residual with high leverage
+```{r}
+n <- nrow(TS)
+p <- 8
+plot(cooks.distance(TS_AF), ylab="Cook's Distance")
+abline(qf(0.5, df1=5, df2=n-p), 0, lty=2)
+```
+The plot did not show any outliers.
+
+# check if all variable included in this model have significant associate with our response variable.
+```{r}
+summary(TS_AF)
+```
+# Use K-fold validation to create test and training datasets
+```{r}
+#Loading caret library
+library(caret)
+
+#Install and Import the required libraries 
+# library(C50)
+# library(irr)
+
+#Sets seed and folds
+# set.seed(123)
+# folds <- createFolds(TS$Survived, k=10)
+# results <- lapply(folds, function(x) {
+#   credit_train <- TS[-x, ]
+#   credit_test <- TS[x, ]
+#   credit_model <- C5.0.formula(as.factor(Survived) ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = credit_train)
+#   credit_pred <- predict(credit_model, credit_test)
+#   credit_actual <- credit_test$Survived
+#   kappa <- kappa2(data.frame(credit_actual, credit_pred))$value
+#   return(kappa)
+# })
+# results
+
+
+#Getting the average value
+# mean(unlist(results))
+
+
+# setting seed to generate a 
+# reproducible random sampling
+set.seed(123)
+
+smp_size <- floor(0.9 * nrow(TS))
+train_ind <- sample(seq_len(nrow(TS)), size = smp_size)
+
+train <- TS[train_ind, ]
+test <- TS[-train_ind, ]
+
+# defining training control as
+# repeated cross-validation and 
+# value of K is 10 and repetition is 3 times
+train_control <- trainControl(method = "repeatedcv", 
+                              number = 10, repeats = 3)
+ 
+# training the model by assigning sales column
+# as target variable and rest other column
+# as independent variable
+model <- train(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train,
+               trControl = train_control, method = "glmnet", family = "binomial")
+print(model)
+
+yhat1 <- predict(model, test)
+confusionMatrix(table(data.frame(as.numeric(yhat1 >=0.5), y = test$Survived)))
+
+```
+
+
+```{r}
+# LDA
+library(MASS)
+# Fit the model
+model.lda <- lda(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train)
+model.lda
+# Make predictions
+predictions <- model.lda %>% predict(test)
+
+# Model accuracy
+# mean(predictions$class==test$Survived)
+confusionMatrix(table(predictions$class, test$Survived))
+
+# QDA
+# Fit the model
+model.qda <- qda(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train)
+
+# Make predictions
+predictions <- model.qda %>% predict(test)
+
+# Model accuracy
+# mean(predictions$class==test$Survived)
+confusionMatrix(table(predictions$class, test$Survived))
+```
+
+```{r}
+library(rpart)
+library(rpart.plot)
+rpart.tree <- rpart(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train, method = 'class')
+rpart.plot(rpart.tree, extra = 106)
+
+predict_unseen <- predict(rpart.tree, test, type = 'class')
+table_mat <- table(test$Survived, predict_unseen)
+confusionMatrix(table_mat)
+```
+```{r}
+# Lasso
+#define response variable
+lasso_yTS <- train$Survived
+
+#define matrix of predictor variables
+lasso_xTS <- data.matrix(train[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
+# Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp
+library(glmnet)
+
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(lasso_xTS, lasso_yTS, alpha = 1)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda # The lambda value that minimizes the test MSE
+
+
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+
+best_model <- glmnet(lasso_xTS, lasso_yTS, alpha = 1, lambda = best_lambda)
+coef(best_model)
+
+#define new observation
+new = data.matrix(test[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')]) 
+
+#use lasso regression model to predict response value
+TF <- predict(best_model, s = best_lambda, newx = new)>0.5
+TF1 <- ifelse(TF == T, 1, 0)
+confusionMatrix(table(TF1, test$Survived))
+```
+
+```{r}
+# Ridge
+#define response variable
+Ridge_y <- train$Survived
+
+#define matrix of predictor variables
+Ridge_x <- data.matrix(train[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
+
+model <- glmnet(Ridge_x, Ridge_y, alpha = 0)
+# summary(model)
+
+#perform k-fold cross-validation to find optimal lambda value
+cv_model <- cv.glmnet(Ridge_x, Ridge_y, alpha = 0)
+
+#find optimal lambda value that minimizes test MSE
+best_lambda <- cv_model$lambda.min
+best_lambda #The lambda value that minimizes the test MSE
+
+
+#produce plot of test MSE by lambda value
+plot(cv_model) 
+
+#find coefficients of best model
+best_model <- glmnet(Ridge_x, Ridge_y, alpha = 0, lambda = best_lambda)
+coef(best_model)
+
+#produce Ridge trace plot
+plot(model, xvar = "lambda")
+
+#define new observation
+new = data.matrix(test[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')]) 
+
+#use lasso regression model to predict response value
+TF_ridge <- predict(best_model, s = best_lambda, newx = new)>0.5
+TF1_ridge <- ifelse(TF == T, 1, 0)
+confusionMatrix(table(TF1_ridge, test$Survived))
+```
+
