@@ -49,7 +49,8 @@ TS %>%
   select(-PassengerId, -Name, -Cabin, -Ticket) %>% 
   mutate(Sex = as.factor(Sex),
          Embarked = as.factor(Embarked),
-         Age_rounded = round(Age/10)*10)-> TS
+         Age_rounded = round(Age/10)*10) %>% 
+  select(-Age)-> TS
 ```
 # check the distribution of variable.
 ```{r}
@@ -127,10 +128,30 @@ ggplot(TS,aes(x=Embarked,y=Survived))+
   theme_bw() +
   ylab("Propability")
 ```
+# train and test data
+```{r}
+#Loading caret library
+library(caret)
+
+set.seed(123)
+
+smp_size <- floor(0.9 * nrow(TS))
+train_ind <- sample(seq_len(nrow(TS)), size = smp_size)
+
+train <- TS[train_ind, ]
+test <- TS[-train_ind, ]
+
+# defining training control as
+# repeated cross-validation and 
+# value of K is 10 and repetition is 3 times
+train_control <- trainControl(method = "repeatedcv", 
+                              number = 10, repeats = 3)
+```
+
 
 # Form the full model
 ```{r}
-TS.lm <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, family = binomial, data = TS)
+TS.lm <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, family = binomial, data = train)
 summary(TS.lm)
 library(DescTools)
 PseudoR2(TS.lm) # R^2
@@ -138,7 +159,7 @@ PseudoR2(TS.lm) # R^2
 # modle selection
 ```{r}
 library(leaps)
-TS.lmR <- regsubsets(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, data = TS)
+TS.lmR <- regsubsets(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, data = train)
 Areg.summary <- summary(TS.lmR)
 Areg.summary$cp
 Areg.summary$bic
@@ -166,9 +187,9 @@ plot(Areg.summary$adjr2, xlab = "Number of Variables", ylab = "Adjusted RSq", ty
 which.max(Areg.summary$adjr2) 
 points(8, Areg.summary$adjr2[8], col = "red", cex = 2, pch = 20)
 ```
-# Modle after selection
+# Model after selection
 ```{r}
-TS_AF <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = TS)
+TS_AF <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = train)
 summary(TS_AF)
 library(DescTools)
 PseudoR2(TS_AF)
@@ -179,12 +200,12 @@ PseudoR2(TS_AF)
 H0: E(Y) = beta0 + beta 1 * X
 Ha: E(Y) != beta0 + beta 1 * X
 ```{r}
-TS_reduced <- glm(Survived ~ Pclass + Sex + Age_rounded + SibSp, family = binomial, data = TS)
-TS_full <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = TS)
+TS_reduced <- glm(Survived ~ Pclass + Sex + Age_rounded + SibSp, family = binomial, data = train)
+TS_full <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = train)
 anova(TS_reduced, TS_full)
-1-pchisq(26.194, 7)
+1-pchisq(25.89, 7)
 ```
-At p-value < 0.05 (0.0004650039), we reject the null hypothesis ($H_0: E(Y)=\beta_0+\beta_1 X$, i.e., model fits data). There has evidence of a lack of fit of the Age variable, so we want to transform Age.
+At p-value < 0.05 ([1] 0.0005269761), we reject the null hypothesis ($H_0: E(Y)=\beta_0+\beta_1 X$, i.e., model fits data). There has evidence of a lack of fit of the Age variable, so we want to transform Age.
 
 # Check if there have collinearity between each variable.
 ```{r}
@@ -195,7 +216,7 @@ There has no variable with GVIF larger than 5, so we do not consider this model 
 
 # Check if there have residual with high leverage
 ```{r}
-n <- nrow(TS)
+n <- nrow(train)
 p <- 8
 plot(cooks.distance(TS_AF), ylab="Cook's Distance")
 abline(qf(0.5, df1=5, df2=n-p), 0, lty=2)
@@ -208,58 +229,15 @@ summary(TS_AF)
 ```
 # Use K-fold validation to create test and training datasets
 ```{r}
-#Loading caret library
-library(caret)
-
-#Install and Import the required libraries 
-# library(C50)
-# library(irr)
-
-#Sets seed and folds
-# set.seed(123)
-# folds <- createFolds(TS$Survived, k=10)
-# results <- lapply(folds, function(x) {
-#   credit_train <- TS[-x, ]
-#   credit_test <- TS[x, ]
-#   credit_model <- C5.0.formula(as.factor(Survived) ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = credit_train)
-#   credit_pred <- predict(credit_model, credit_test)
-#   credit_actual <- credit_test$Survived
-#   kappa <- kappa2(data.frame(credit_actual, credit_pred))$value
-#   return(kappa)
-# })
-# results
-
-
-#Getting the average value
-# mean(unlist(results))
-
-
-# setting seed to generate a 
-# reproducible random sampling
-set.seed(123)
-
-smp_size <- floor(0.9 * nrow(TS))
-train_ind <- sample(seq_len(nrow(TS)), size = smp_size)
-
-train <- TS[train_ind, ]
-test <- TS[-train_ind, ]
-
-# defining training control as
-# repeated cross-validation and 
-# value of K is 10 and repetition is 3 times
-train_control <- trainControl(method = "repeatedcv", 
-                              number = 10, repeats = 3)
- 
 # training the model by assigning sales column
 # as target variable and rest other column
 # as independent variable
-model <- train(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train,
+model <- train(as.factor(Survived) ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train,
                trControl = train_control, method = "glmnet", family = "binomial")
 print(model)
 
 yhat1 <- predict(model, test)
-confusionMatrix(table(data.frame(as.numeric(yhat1 >=0.5), y = test$Survived)))
-
+confusionMatrix(table(yhat1, y = test$Survived))
 ```
 
 
@@ -267,7 +245,7 @@ confusionMatrix(table(data.frame(as.numeric(yhat1 >=0.5), y = test$Survived)))
 # LDA
 library(MASS)
 # Fit the model
-model.lda <- lda(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train)
+model.lda <- lda(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train, trControl = train_control)
 model.lda
 # Make predictions
 predictions <- model.lda %>% predict(test)
@@ -278,14 +256,16 @@ confusionMatrix(table(predictions$class, test$Survived))
 
 # QDA
 # Fit the model
-model.qda <- qda(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train)
-
-# Make predictions
-predictions <- model.qda %>% predict(test)
-
-# Model accuracy
-# mean(predictions$class==test$Survived)
-confusionMatrix(table(predictions$class, test$Survived))
+# model.qda <- qda(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, data = train)
+# 
+# # Make predictions
+# predictions <- model.qda %>% predict(test)
+# 
+# # Model accuracy
+# # mean(predictions$class==test$Survived)
+# confusionMatrix(table(predictions$class, test$Survived))
+# 
+# table(train$Age_rounded)
 ```
 
 ```{r}
@@ -298,6 +278,7 @@ predict_unseen <- predict(rpart.tree, test, type = 'class')
 table_mat <- table(test$Survived, predict_unseen)
 confusionMatrix(table_mat)
 ```
+
 ```{r}
 # Lasso
 #define response variable
@@ -367,5 +348,77 @@ new = data.matrix(test[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
 TF_ridge <- predict(best_model, s = best_lambda, newx = new)>0.5
 TF1_ridge <- ifelse(TF == T, 1, 0)
 confusionMatrix(table(TF1_ridge, test$Survived))
+```
+
+```{r}
+#KNN
+library(e1071)
+library(caTools)
+library(class)
+train %>% 
+  mutate(Sex = as.numeric(Sex)) -> train1
+test %>% 
+  mutate(Sex = as.numeric(Sex)) -> test1
+# Feature Scaling
+train_scale <- scale(train1[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
+test_scale <- scale(test1[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
+
+# Fitting KNN Model
+# to training dataset
+classifier_knn <- knn(train = train_scale,
+					test = test_scale,
+					cl = train1$Survived,
+					k = 1)
+classifier_knn
+
+# Confusiin Matrix
+cm <- table(test1$Survived, classifier_knn)
+cm
+
+# Model Evaluation - Choosing K
+# Calculate out of Sample error
+misClassError <- mean(classifier_knn != test1$Survived)
+print(paste('Accuracy =', 1-misClassError))
+
+# K = 3
+classifier_knn <- knn(train = train_scale,
+					test = test_scale,
+					cl = train1$Survived,
+					k = 3)
+misClassError <- mean(classifier_knn != test1$Survived)
+print(paste('Accuracy =', 1-misClassError))
+
+# K = 5
+classifier_knn <- knn(train = train_scale,
+					test = test_scale,
+					cl = train1$Survived,
+					k = 5)
+misClassError <- mean(classifier_knn != test1$Survived)
+print(paste('Accuracy =', 1-misClassError))
+
+# K = 7
+classifier_knn <- knn(train = train_scale,
+					test = test_scale,
+					cl = train1$Survived,
+					k = 7)
+misClassError <- mean(classifier_knn != test1$Survived)
+print(paste('Accuracy =', 1-misClassError))
+
+# K = 15
+classifier_knn <- knn(train = train_scale,
+					test = test_scale,
+					cl = train1$Survived,
+					k = 15)
+misClassError <- mean(classifier_knn != test1$Survived)
+print(paste('Accuracy =', 1-misClassError))
+
+# K = 19
+classifier_knn <- knn(train = train_scale,
+					test = test_scale,
+					cl = train1$Survived,
+					k = 19)
+misClassError <- mean(classifier_knn != test1$Survived)
+print(paste('Accuracy =', 1-misClassError))
+
 ```
 
