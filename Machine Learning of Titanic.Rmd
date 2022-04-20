@@ -349,76 +349,48 @@ TF_ridge <- predict(best_model, s = best_lambda, newx = new)>0.5
 TF1_ridge <- ifelse(TF == T, 1, 0)
 confusionMatrix(table(TF1_ridge, test$Survived))
 ```
+# KNN
+```{r}
+set.seed(300)
+#Spliting data as training and test set. Using createDataPartition() function from caret
+indxTrainTS <- createDataPartition(y = TS$Survived,p = 0.9,list = FALSE)
+trainTS <- TS[indxTrainTS,]
+testTS <- TS[-indxTrainTS,]
+```
 
 ```{r}
-#KNN
-library(e1071)
-library(caTools)
-library(class)
-train %>% 
-  mutate(Sex = as.numeric(Sex)) -> train1
-test %>% 
-  mutate(Sex = as.numeric(Sex)) -> test1
-# Feature Scaling
-train_scale <- scale(train1[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
-test_scale <- scale(test1[, c('Pclass', 'Sex', 'Age_rounded', 'SibSp')])
+set.seed(400)
+ctrl <- trainControl(method="repeatedcv",repeats = 3) #,classProbs=TRUE,summaryFunction = twoClassSummary)
+knnFitTS <- train(as.factor(Survived) ~ ., data = trainTS, method = "knn", trControl = ctrl, preProcess = c("center","scale"), tuneLength = 20)
 
-# Fitting KNN Model
-# to training dataset
-classifier_knn <- knn(train = train_scale,
-					test = test_scale,
-					cl = train1$Survived,
-					k = 1)
-classifier_knn
+#Output of kNN fit
+knnFitTS
+```
 
-# Confusiin Matrix
-cm <- table(test1$Survived, classifier_knn)
-cm
+```{r}
+plot(knnFitTS)
+```
 
-# Model Evaluation - Choosing K
-# Calculate out of Sample error
-misClassError <- mean(classifier_knn != test1$Survived)
-print(paste('Accuracy =', 1-misClassError))
+```{r}
+knnPredict <- predict(knnFitTS,newdata = testTS)
+#Get the confusion matrix to see accuracy value and other parameter values
+confusionMatrix(table(knnPredict, testTS$Survived))
+```
 
-# K = 3
-classifier_knn <- knn(train = train_scale,
-					test = test_scale,
-					cl = train1$Survived,
-					k = 3)
-misClassError <- mean(classifier_knn != test1$Survived)
-print(paste('Accuracy =', 1-misClassError))
+# Applying Random Forest to see the performance improvement
+```{r}
+set.seed(400)
+ctrl <- trainControl(method="repeatedcv",repeats = 3) #,classProbs=TRUE,summaryFunction = twoClassSummary)
 
-# K = 5
-classifier_knn <- knn(train = train_scale,
-					test = test_scale,
-					cl = train1$Survived,
-					k = 5)
-misClassError <- mean(classifier_knn != test1$Survived)
-print(paste('Accuracy =', 1-misClassError))
-
-# K = 7
-classifier_knn <- knn(train = train_scale,
-					test = test_scale,
-					cl = train1$Survived,
-					k = 7)
-misClassError <- mean(classifier_knn != test1$Survived)
-print(paste('Accuracy =', 1-misClassError))
-
-# K = 15
-classifier_knn <- knn(train = train_scale,
-					test = test_scale,
-					cl = train1$Survived,
-					k = 15)
-misClassError <- mean(classifier_knn != test1$Survived)
-print(paste('Accuracy =', 1-misClassError))
-
-# K = 19
-classifier_knn <- knn(train = train_scale,
-					test = test_scale,
-					cl = train1$Survived,
-					k = 19)
-misClassError <- mean(classifier_knn != test1$Survived)
-print(paste('Accuracy =', 1-misClassError))
-
+# Random forrest
+rfFit <- train(as.factor(Survived) ~ ., data = trainTS, method = "rf", trControl = ctrl, tuneLength = 10)
+```
+```{r}
+rfFit
+plot(rfFit)
+```
+```{r}
+rfPredict <- predict(rfFit,newdata = testTS)
+confusionMatrix(table(rfPredict, testTS$Survived))
 ```
 
