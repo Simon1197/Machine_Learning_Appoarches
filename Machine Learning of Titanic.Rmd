@@ -129,6 +129,7 @@ ggplot(TS,aes(x=Embarked,y=Survived))+
   ylab("Propability")
 ```
 # train and test data
+# Use K-fold validation to create test and training datasets
 ```{r}
 #Loading caret library
 library(caret)
@@ -149,12 +150,45 @@ train_control <- trainControl(method = "repeatedcv",
 ```
 
 
-# Form the full model
+# Form the full model of training data
 ```{r}
 TS.lm <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp + Parch + Fare + Embarked, family = binomial, data = train)
 summary(TS.lm)
 library(DescTools)
 PseudoR2(TS.lm) # R^2
+```
+
+# Check if Age need to be transformed to Age_rounded.
+
+H0: E(Y) = beta0 + beta 1 * X
+Ha: E(Y) != beta0 + beta 1 * X
+```{r}
+TS_reduced <- glm(Survived ~ ., family = binomial, data = train)
+TS_full <- glm(Survived ~ . -Age_rounded + as.factor(Age_rounded), family = binomial, data = train)
+anova(TS_reduced, TS_full)
+1-pchisq(29.97, 7)
+```
+At p-value < 0.05 (9.617044e-05), we reject the null hypothesis ($H_0: E(Y)=\beta_0+\beta_1 X$, i.e., model fits data). There has evidence of a lack of fit of the Age variable, so we want to transform Age.
+
+# Check if there have collinearity between each variable.
+```{r}
+library(car)
+vif(TS_full)
+```
+There has no variable with GVIF larger than 5, so we do not consider this model will include the problem of mulitcollinearity.
+
+# Check if there have residual with high leverage
+```{r}
+n <- nrow(train)
+p <- 7
+plot(cooks.distance(TS_full), ylab="Cook's Distance")
+abline(qf(0.5, df1=5, df2=n-p), 0, lty=2)
+```
+The plot did not show any outliers.
+
+# check if all variable included in this model have significant associate with our response variable.
+```{r}
+summary(TS_full)
 ```
 # modle selection
 ```{r}
@@ -195,39 +229,8 @@ library(DescTools)
 PseudoR2(TS_AF)
 ```
 
-# Check if Age need to be transformed to Age_rounded.
 
-H0: E(Y) = beta0 + beta 1 * X
-Ha: E(Y) != beta0 + beta 1 * X
-```{r}
-TS_reduced <- glm(Survived ~ Pclass + Sex + Age_rounded + SibSp, family = binomial, data = train)
-TS_full <- glm(Survived ~ Pclass + Sex + as.factor(Age_rounded) + SibSp, family = binomial, data = train)
-anova(TS_reduced, TS_full)
-1-pchisq(25.89, 7)
-```
-At p-value < 0.05 ([1] 0.0005269761), we reject the null hypothesis ($H_0: E(Y)=\beta_0+\beta_1 X$, i.e., model fits data). There has evidence of a lack of fit of the Age variable, so we want to transform Age.
-
-# Check if there have collinearity between each variable.
-```{r}
-library(car)
-vif(TS_AF)
-```
-There has no variable with GVIF larger than 5, so we do not consider this model will include the problem of mulitcollinearity.
-
-# Check if there have residual with high leverage
-```{r}
-n <- nrow(train)
-p <- 8
-plot(cooks.distance(TS_AF), ylab="Cook's Distance")
-abline(qf(0.5, df1=5, df2=n-p), 0, lty=2)
-```
-The plot did not show any outliers.
-
-# check if all variable included in this model have significant associate with our response variable.
-```{r}
-summary(TS_AF)
-```
-# Use K-fold validation to create test and training datasets
+# Logistic regression
 ```{r}
 # training the model by assigning sales column
 # as target variable and rest other column
@@ -311,9 +314,9 @@ TF <- predict(best_model, s = best_lambda, newx = new)>0.5
 TF1 <- ifelse(TF == T, 1, 0)
 confusionMatrix(table(TF1, test$Survived))
 ```
-
-```{r}
 # Ridge
+```{r}
+# have same assumption with regression
 #define response variable
 Ridge_y <- train$Survived
 
