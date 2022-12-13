@@ -1,4 +1,4 @@
-# Machine-Learning-Project
+# Machine_Learning_Appoarches
 
 ## Data Source
 Link: https://www.kaggle.com/competitions/titanic/data?select=train.csv
